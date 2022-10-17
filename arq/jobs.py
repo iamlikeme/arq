@@ -166,7 +166,18 @@ class Job:
         await self._redis.zadd(abort_jobs_ss, {self.job_id: timestamp_ms()})
 
         try:
-            await self.result(timeout=timeout, poll_delay=poll_delay)
+            async for delay in poll(poll_delay):
+                result_info = await self.result_info()
+                if result_info is None:
+                    if await self.info() is None:
+                        return False
+                    if timeout is not None and delay > timeout:
+                        raise asyncio.TimeoutError()
+                elif result_info.success:
+                    return False
+                else:
+                    raise result_info.result
+
         except asyncio.CancelledError:
             return True
         else:
